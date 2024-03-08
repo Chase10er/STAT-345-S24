@@ -13,11 +13,15 @@ knitr::opts_chunk$set(echo = TRUE)
 cars_data <- cars
 str(cars)
 ```
+
 ```{r}
 #first test
 library(ggplot2)
 
 ggplot(cars, aes(x = speed, y = dist)) +
-  geom_point()
+  geom_point() +
+  labs(title = "Speed and Stopping Distances of Cars",
+       x = "Speed (MPH)",
+       y = "Stopping Distance (ft)")
 ```
 
