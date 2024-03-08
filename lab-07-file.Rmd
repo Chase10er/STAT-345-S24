@@ -1,0 +1,23 @@
+---
+title: "First github file"
+author: "Chase Tenner"
+date: "2024-03-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+cars_data <- cars
+str(cars)
+```
+```{r}
+#first test
+library(ggplot2)
+
+ggplot(cars, aes(x = speed, y = dist)) +
+  geom_point()
+```
+
