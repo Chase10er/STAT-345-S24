@@ -1,0 +1,235 @@
+---
+title: "Minnesota Timberwolves Shot Analysis"
+subtitle: "STAT 345 Midterm Project"
+author: "Chase Tenner"
+font: 12pt
+date: "March 29, 2024"
+output:
+  html_document: 
+      theme: readable
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning=FALSE)
+```
+
+> "Our offense is like the Pythagorean Theorem. There is no answer!", *Shaquille O'Neal*
+
+In the fast-paced world of professional basketball, strategic adaptation is paramount for teams striving to maintain a competitive edge. This analysis delves into the evolving trends of basketball strategy, employing data-driven methodologies to uncover patterns in shot selection and offensive tactics. By scrutinizing the frequency and distribution of shot attempts, aim to illuminate the strategic decisions guiding teams in their pursuit of offensive efficiency and success. This exploration underscores the pivotal role of analytics in shaping modern basketball strategy, offering valuable insights into the dynamic landscape of the sport.
+
+```{r message = FALSE}
+library(devtools)
+library(nbastatR)
+library(tidyverse)
+library(ggimage)
+library(devtools)
+library(png)
+library(grid)
+library(magick)
+library(gganimate)
+library(av)
+
+Sys.setenv(VROOM_CONNECTION_SIZE = 10 * 1024^2)  # 10 MB buffer size, required for loading team shot data
+```
+
+## Gather data
+
+```{r message = FALSE}
+wolves_1997 <- teams_shots(teams = "Minnesota Timberwolves", seasons = 1997)
+wolves_2002 <- teams_shots(teams = "Minnesota Timberwolves", seasons = 2002)
+wolves_2007 <- teams_shots(teams = "Minnesota Timberwolves", seasons = 2007)
+wolves_2012 <- teams_shots(teams = "Minnesota Timberwolves", seasons = 2012)
+wolves_2017 <- teams_shots(teams = "Minnesota Timberwolves", seasons = 2017)
+wolves_2022 <- teams_shots(teams = "Minnesota Timberwolves", seasons = 2022)
+# years chosen in increments of 5 to represent past decades of data available
+```
+
+## Join data
+
+```{r}
+combined_data <- bind_rows(wolves_1997, wolves_2002, wolves_2007, wolves_2012, wolves_2017, wolves_2022) # we can simply bind the rows as the columns are all identical
+combined_data$yearSeason <- as.integer(combined_data$yearSeason) # year as integer for animated graph
+```
+
+## Creating graphics
+
+```{r court_dimensions}
+img <- readPNG("dimensions_nba_court.png")
+grid.newpage()
+grid.raster(img)
+```
+
+```{r shot_plot}
+
+#Based on the relationship between the location variables and distanceShot, one x coordinate is .1 feet. So an x coordinate of 100 is 10 feet from the basket We can use this information to place a basketball court.
+
+nba_court <- readPNG("nba_court_vert_trim.png")
+logo <- readPNG("Timberwolves_logo.png")
+
+
+# x and y limits of the basketball court image
+court_x_limits <- c(-250, 250)  # Full basketball court width is 50 feet
+court_y_limits <- c(55, -885.8333)  # center of basket is 5'5" (5.41666) feet from start of court, Full basketball court width is 94 feet. -940 + 54.16666 = -885.8333
+
+
+team_colors <- c("#005083", "#00a94f")
+
+missed_color <- "#E63B17"  
+made_color <- "#005083"
+
+
+# scale y-axis labels by 1/10th
+scale_y_labels <- function(x) { 
+  paste(x/10, " ft")
+}
+
+# scale x-axis labels by 1/10th
+scale_x_labels <- function(x) { 
+  paste(x/10, " ft")
+}
+
+
+base_plot <- ggplot(combined_data, aes(locationX, locationY, color = typeEvent)) +
+  # nba court image
+  annotation_raster(nba_court, xmin = court_x_limits[1], xmax = court_x_limits[2],
+                    ymin = court_y_limits[1], ymax = court_y_limits[2], interpolate = TRUE) +
+  # logo image: from basket to midline is 47 ft - 5.41666  = 41.58334. from midline to top of circle is 6 feet (same with bottom). so logo should be in 35.58334 to 47.58334.
+  annotation_raster(logo, xmin = -60, xmax = 60, ymin = -475.8334 , ymax = -355.8334 ) + 
+  # alpha to make points transparent
+  geom_point(alpha = .25) +
+  scale_color_manual(values = c("Missed Shot" = missed_color, "Made Shot" = made_color)) +   
+  theme_minimal() +
+  theme(axis.title = element_blank(), plot.margin = unit(c(1, 1, 1, 1), "lines"), legend.position = "right")  +
+  scale_x_continuous(labels = scale_x_labels) +
+  scale_y_continuous(trans = "reverse", labels = scale_y_labels) 
+  
+
+# create an animated plot that cycles through the years
+animated_plot <- base_plot +
+  # no transition between points
+  transition_states(yearSeason, transition_length = 0 )  +
+  labs(title = "Shot Chart for the Minnesota Timberwolves", color = "Outcome" , subtitle = "Year: {previous_state}") 
+
+animated_plot
+
+
+```
+
+## Findings
+
+-   Over recent years, there has been a notable surge in the frequency of 3-point shots.
+
+-   Since the 1990s, there has been a gradual decline in the occurrence of 2-point shots.
+
+-   There has been a discernible uptick in the shots attempted in the paint.
+
+-   Upon examining shots taken in the paint, it's evident that a higher proportion of shots are made near the basket compared to those farther away in the paint.
+
+-   Attempts from the corner three-point position significantly outnumber those from other areas beyond the arc.
+
+
+#### Over recent years, there has been a notable surge in the frequency of 3-point shots. And since the 1990s, there has been a gradual decline in the occurrence of 2-point shots.
+
+```{r}
+# find the count of shots by year and shot type
+shots_summary <- combined_data %>%
+  group_by(yearSeason, typeShot) %>%
+  summarise(count = n())
+
+# Plot a side by side bar chart for each year
+ggplot(shots_summary, aes(x = yearSeason, y = count, fill = typeShot)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("#005083", "#00a94f")) +
+  labs(title = "Number of 3-point vs. 2-point shots by year",
+       x = "Year",
+       y = "Number of Shots",
+       fill = "Shot Type") +
+  theme_minimal() 
+  
+```
+
+The rise of the 3-pointer is a noted phenomenon in the NBA and has even earned the name "The 3-point Revolution". Teams now emphasize long-range shooting due to its higher point yield and potential to spread opposing defenses. (<https://www.nba.com/news/3-point-era-nba-75>). Even in a game where a team is having success with mid range shots, the team that can outshoot them will always have the advantage because 3-pointers allow the team to maximize their scoring potential per drive. As a result, players have started to emphasize their shooting skill-sets, practicing heavily in this area. Advancements in training and coaching have produced some elite 3-point scorers like Stephen Curry. Unfortunately, the Minnesota Timberwolves have faced criticism for not developing a 3-point specialists and some fans think is the culprit behind their losses. (<https://www.twincities.com/2016/01/09/timberwolves-doomed-by-three-point-shooting-once-again/>)
+
+The decline of 2-point shots directly correlates with the surge in 3-pointers. As teams prioritize efficient scoring, mid-range attempts, particularly those outside the paint, have become less frequent. This decline is particularly evident in shots between the free throw line and the three-point line. Players do not see a need in attempting shots in this zone which is often just as contested as beyond the 3 point line. If attempting a jump shot, a player would much prefer the chance to make a 3-point rather than a mid range shot.
+
+#### There has been a discernible uptick in the shots attempted in the paint.
+
+The rise in shots attempted in the paint might seem contradictory to the focus on threes, but it's part of a strategic shift. The increased spacing created by the threat of three-pointers allows for easier drives to the basket. These drives lead to more layups and dunks, which are high-percentage shots. There was a particularly large increase in shots from the paint from 1997 to 2002. One reason for this could be the addition of the restricted zone. The restricted zone was added in the 1997-98 season to prevent injuries and encourage fairness by restricting the defending player from forcing an offensive foul on the opposing player. (<https://sportsfanfocus.com/restricted-area-basketball/>). As a result of increased shots in the paint, there is a greater emphasis placed on interior passing. Additionally, offensive rebounds become very important.
+
+#### Upon examining shots taken in the paint, it's evident that a higher proportion of shots are made near the basket compared to those farther away in the paint.
+
+When examining the free throw lane on the plot, there is a clear clustering of blue points directly underneath the basket. this observation underscores the importance of shot selection and shot quality in basketball strategy. Teams are increasingly focused on generating high-percentage scoring opportunities by prioritizing shots near the rim and avoiding contested attempts. There is much more consistency for layups and dunks which are performed directly under the basket compared to shots like floaters which are performed father away from the basket.
+
+#### Attempts from the corner three-point position significantly outnumber those from other areas beyond the arc.
+
+The corner three-point shot is attempted significantly more often compared to other 3 point locations on the court. This is shown by the clustering of points on either side of the court where the 3 point line is straight. Compare this to the wing, where the straight line of the 3 point line meets the arc of the 3 point line. This area sees considerably less attempts. There are several advantages to the corner 3. The first is its relatively shorter distance from the basket compared to other three-point positions. However, more important is its strategic placement along the perimeter which requires defenders to cover long distances to contest shots effectively. (<https://wabc.fiba.com/manual/level-3/l3-team/2-offensive-tactics-and-strategies/2-2-offensive-movement/2-2-8-shot-selection-importance-of-the-corner-3/>). The corner 3 yields three points while also stretching opposing defenses and opening up opportunities for driving lanes and interior scoring.
+
+## Further Analysis:
+
+Where are shots taken based on a player's position?
+
+### Gather and join data
+
+```{r messaage = FALSE}
+# get salary information for the Minnesota Timbewolves
+players_2022 <- bref_players_stats(seasons = 2022) %>%
+  filter(slugTeamsBREF == "MIN") %>%
+  select(namePlayer, slugPosition)
+
+
+# join the salary information to the 2022 shot data
+joined_data <- left_join(wolves_2022, players_2022, by = c("namePlayer" = "namePlayer"))
+
+# examine cases with NA values
+joined_data[!complete.cases(joined_data),]
+
+```
+
+### Clean data
+
+```{r}
+# Greg Monroe is a center https://www.nba.com/timberwolves/news/timberwolves-sign-center-greg-monroe-220407
+
+# replace the position variable with C for Greg Monroe
+joined_data <- joined_data %>%
+  mutate(slugPosition = replace(slugPosition, namePlayer == "Greg Monroe", "C"))
+```
+
+### Create graphics
+
+```{r}
+pos_chart <- ggplot(joined_data, aes(locationX, locationY, color = typeEvent)) +
+  annotation_raster(nba_court, xmin = court_x_limits[1], xmax = court_x_limits[2],
+                    ymin = court_y_limits[1], ymax = court_y_limits[2], interpolate = TRUE) +
+  annotation_raster(logo, xmin = -60, xmax = 60, ymin = -475.8334 , ymax = -355.8334 ) + 
+  geom_point(alpha = .25) +
+  scale_color_manual(values = c("Missed Shot" = missed_color, "Made Shot" = made_color)) +   
+  labs(title = "Shot Chart for the Minnesota Timberwolves", color = "Outcome" , subtitle = paste("Year:", min(joined_data$yearSeason))) +
+  theme_minimal() +
+  theme(axis.title = element_blank(), plot.margin = unit(c(1, 1, 1, 1), "lines"), legend.position = "right")  +
+  scale_x_continuous(labels = scale_x_labels) +
+  scale_y_continuous(trans = "reverse", labels = scale_y_labels) +
+  # create individual plots for each position
+  facet_wrap(~ slugPosition) 
+
+pos_chart
+```
+
+-   Centers (C) typically take most of their shots close to the basket, in the paint. However, it is surprising to see that they still take a considerable amount of shots from the point.
+-   Power forwards (PF) also take most of their shots close to the basket, but they attempt more corner 3 shots than centers do.
+-   Small forwards (SF) also take most of their shots in the paint. However, the plot shows that this is a much more niche position as there are not many players considered small forwards on the Timberwolves.
+-   Shooting guards (SG) typically take more shots from further away from the basket than centers and power forwards. They attempt a significant number of shots from beyond the three-point line.
+-   Point guards (PG) take shots from all over the court. It is surprising to see that they take the most mid range shots out of any positions, even more than forwards.
+
+These observations are consistent with the typical roles of the different positions on a basketball team. However, the plots provide insight into how flexible each position is. Each player needs to be able to shoot from a variety of spots on the court. This adaptable play style is important as the game of basketball is always changing as we have seen in the previous analysis.
+
+## Final thoughts
+
+There has been a clear strategic shift in the NBA in the past few decades, marked by increased reliance on 3-point shots and decreased emphasis on 2-point attempts. This reflects teams' focus on maximizing offensive efficiency. Additionally, there's a noticeable increase in paint shots, highlighting a push for high-percentage scoring opportunities near the basket. The prevalence of corner three-point attempts underscores the importance of efficient perimeter shooting. These trends reflect ongoing adaptations to rules and tactical innovations, shaping modern basketball strategy.
+
+The findings of this analysis offer valuable insights into the evolving landscape of basketball strategy. This analysis serves as a testament to the wealth of data available in the NBA and underscores the potential for further research to deepen understanding of the sport. As teams continue to leverage analytics to optimize performance, future analyses can build upon these findings to uncover additional strategic insights, driving continuous innovation within the sport.
+
+Moving forward, some interesting areas of research might include examining zone efficiency, seeking to answer the question of what zone exhibits the highest proportion of made shots relative to attempted shots. Anther interesting area of analysis could be the comparison of players' shot success rates to their salaries.
